@@ -1,0 +1,48 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with system csc
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
+
+          .\app\build.ps1
+
+          $exe = 'app\dist\DingTalkClockIn.exe'
+          if (-not (Test-Path $exe)) { throw '构建没有产出 exe' }
+
+          $tag = '${{ github.ref_name }}'
+          $asset = "app\dist\DingTalkClockIn-$tag.exe"
+          Copy-Item $exe $asset -Force
+
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash
+          "$hash  DingTalkClockIn-$tag.exe" | Out-File 'app\dist\SHA256SUMS.txt' -Encoding ascii
+
+          Get-Item $asset | Select-Object Name, Length
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "app/dist/DingTalkClockIn-${{ github.ref_name }}.exe" \
+            "app/dist/SHA256SUMS.txt" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
