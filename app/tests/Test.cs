@@ -38,6 +38,11 @@ internal class Test
         cfg.Pin = "2468";
         Check("PIN 加密后可还原", cfg.Pin == "2468", cfg.Pin);
         Check("PIN 不落明文", cfg.S("pin", "").StartsWith("dpapi:"), cfg.S("pin", ""));
+        Check("默认保存截图", cfg.B("captureScreenshots", false), "");
+
+        cfg.Set("captureScreenshots", false);
+        Check("截图开关可关闭", !cfg.B("captureScreenshots", true), "");
+        cfg.Set("captureScreenshots", true);
 
         var hol = new HolidayService(paths, log);
         hol.Load();
@@ -103,6 +108,13 @@ internal class Test
         File.WriteAllText(json, "[{\"date\":\"2030-01-02\",\"type\":\"holiday\",\"name\":\"测试\"}]");
         hol.Load();
         Check("接口缓存参与判定", !hol.IsWorkday(new DateTime(2030, 1, 2), out reason), reason);
+
+        state.SetLastResult(DateTime.Now, "测试结果", @"C:\shots\a.png", true);
+        state.ClearShotIf(@"C:\shots\a.png");
+        var lr2 = state.GetLastResult();
+        Check("删除截图后清空 lastResult.shot",
+            lr2 != null && Convert.ToString(lr2["shot"]) == "",
+            lr2 == null ? "null" : Convert.ToString(lr2["shot"]));
 
         Console.WriteLine();
         Console.WriteLine("PASS=" + _pass + " FAIL=" + _fail);

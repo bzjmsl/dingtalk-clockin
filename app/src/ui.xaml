@@ -529,6 +529,7 @@
                                         <CheckBox x:Name="ChkAutostart" Content="开机自动启动（当前用户）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkOpenApp" Content="极速打卡模式下自动打开钉钉界面" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkAbortField" Content="检测到外勤打卡（绿色按钮）时中止" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                        <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
                                     </StackPanel>
                                 </Border>
@@ -647,7 +648,10 @@
 
                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
                             <Button x:Name="BtnOpenFolder" Content="打开数据目录" Style="{StaticResource GhostButton}"/>
-                            <TextBlock x:Name="TxtLogHint" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="14,0,0,0"/>
+                            <Button x:Name="BtnDeleteShot" Content="删除选中截图" Style="{StaticResource GhostButton}" Margin="10,0,0,0"/>
+                            <Button x:Name="BtnClearShots" Content="清空全部截图" Style="{StaticResource GhostButton}" Margin="10,0,0,0"/>
+                            <TextBlock x:Name="TxtLogHint" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                       MaxWidth="380" TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
 
                         <Grid Grid.Row="2">

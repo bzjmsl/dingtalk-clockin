@@ -88,6 +88,7 @@ namespace DingTalkClockIn
             if (Get("wakeHoldSec") == null) Set("wakeHoldSec", 60);
             if (Get("openDingTalkInWakeMode") == null) Set("openDingTalkInWakeMode", true);
             if (Get("abortOnFieldPunch") == null) Set("abortOnFieldPunch", true);
+            if (Get("captureScreenshots") == null) Set("captureScreenshots", true);
             if (Get("logRetentionDays") == null) Set("logRetentionDays", 30);
             if (Get("skipWhenMissed") == null) Set("skipWhenMissed", true);
             if (Get("advanced.punchButton") == null) Set("advanced.punchButton", "540,1168");
@@ -404,6 +405,18 @@ namespace DingTalkClockIn
         public Dictionary<string, object> GetLastResult()
         {
             return Data.ContainsKey("lastResult") ? Data["lastResult"] as Dictionary<string, object> : null;
+        }
+
+        /// <summary>删除截图后，把仍然指向该文件的 lastResult.shot 清空。</summary>
+        public void ClearShotIf(string path)
+        {
+            var lr = GetLastResult();
+            if (lr == null) return;
+            var shot = lr.ContainsKey("shot") ? Convert.ToString(lr["shot"]) : "";
+            if (string.IsNullOrEmpty(shot)) return;
+            if (!string.Equals(shot, path, StringComparison.OrdinalIgnoreCase)) return;
+            lr["shot"] = "";
+            Save();
         }
     }
 }

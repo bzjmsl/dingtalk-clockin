@@ -88,6 +88,8 @@ namespace DingTalkClockIn
             {
                 try { Process.Start("explorer.exe", _host.Paths.DataDir); } catch { }
             };
+            F<Button>("BtnDeleteShot").Click += delegate { DeleteSelectedShot(); };
+            F<Button>("BtnClearShots").Click += delegate { ClearShots(); };
 
             F<ListBox>("LstLogs").SelectionChanged += delegate
             {
@@ -384,6 +386,8 @@ namespace DingTalkClockIn
             box.ItemsSource = list;
             if (list.Count > 0) box.SelectedIndex = 0;
             if (list.Count == 0) F<Image>("ImgShotPreview").Source = null;
+            F<Button>("BtnDeleteShot").IsEnabled = list.Count > 0;
+            F<Button>("BtnClearShots").IsEnabled = list.Count > 0;
         }
 
         private static string KindOfShot(string fileName)
@@ -393,6 +397,82 @@ namespace DingTalkClockIn
             if (fileName.IndexOf("-result", StringComparison.OrdinalIgnoreCase) >= 0) return "打卡结果";
             if (fileName.IndexOf("-unlock-failed", StringComparison.OrdinalIgnoreCase) >= 0) return "解锁失败";
             return "";
+        }
+
+        private void DeleteSelectedShot()
+        {
+            var item = F<ListBox>("LstShots").SelectedItem as ShotItem;
+            if (item == null)
+            {
+                F<TextBlock>("TxtLogHint").Text = "请先在列表里选中一张截图";
+                return;
+            }
+
+            var name = Path.GetFileName(item.Path);
+            var answer = MessageBox.Show("确定删除这张截图吗？\n\n" + name + "\n\n删除后无法恢复。",
+                "删除截图", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes) return;
+
+            DeleteShotFile(item.Path);
+            RefreshShots();
+            F<TextBlock>("TxtLogHint").Text = "已删除 " + name;
+            _host.Log.Info("已删除截图：" + item.Path);
+        }
+
+        private void ClearShots()
+        {
+            var dir = _host.Paths.ShotDir;
+            string[] files;
+            try { files = Directory.GetFiles(dir, "*.png"); }
+            catch { files = new string[0]; }
+            if (files.Length == 0)
+            {
+                F<TextBlock>("TxtLogHint").Text = "没有可删除的截图";
+                return;
+            }
+
+            var answer = MessageBox.Show("确定清空全部 " + files.Length + " 张截图吗？\n\n删除后无法恢复。",
+                "清空截图", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (answer != MessageBoxResult.Yes) return;
+
+            var failed = 0;
+            foreach (var f in files)
+            {
+                try { File.Delete(f); }
+                catch { failed++; }
+            }
+
+            _lastShot = null;
+            F<Image>("ImgLastShot").Source = null;
+            F<Image>("ImgShotPreview").Source = null;
+            var lr = _host.State.GetLastResult();
+            if (lr != null && lr.ContainsKey("shot")) lr["shot"] = "";
+            _host.State.Save();
+
+            RefreshShots();
+            F<TextBlock>("TxtLogHint").Text = failed == 0
+                ? "已清空 " + files.Length + " 张截图"
+                : "有 " + failed + " 张删除失败，可能被占用";
+            _host.Log.Info("清空截图：" + files.Length + " 张，失败 " + failed);
+        }
+
+        private void DeleteShotFile(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch (Exception ex)
+            {
+                _host.Log.Warn("删除截图失败：" + ex.Message);
+            }
+
+            _host.State.ClearShotIf(path);
+            if (string.Equals(_lastShot, path, StringComparison.OrdinalIgnoreCase))
+            {
+                _lastShot = null;
+                F<Image>("ImgLastShot").Source = null;
+            }
         }
 
         private void ShowPreview(string path)
@@ -456,6 +536,7 @@ namespace DingTalkClockIn
             F<CheckBox>("ChkAutostart").IsChecked = cfg.B("autostart", false);
             F<CheckBox>("ChkOpenApp").IsChecked = cfg.B("openDingTalkInWakeMode", true);
             F<CheckBox>("ChkAbortField").IsChecked = cfg.B("abortOnFieldPunch", true);
+            F<CheckBox>("ChkScreenshots").IsChecked = cfg.B("captureScreenshots", true);
             F<CheckBox>("ChkSkipMissed").IsChecked = cfg.B("skipWhenMissed", true);
             F<PasswordBox>("PwdPin").Password = cfg.Pin;
             F<TextBox>("TxtAdbPath").Text = cfg.S("adbPath", Adb.ResolveDefault(_host.Paths.Root));
@@ -494,6 +575,7 @@ namespace DingTalkClockIn
             cfg.Set("autostart", F<CheckBox>("ChkAutostart").IsChecked == true);
             cfg.Set("openDingTalkInWakeMode", F<CheckBox>("ChkOpenApp").IsChecked == true);
             cfg.Set("abortOnFieldPunch", F<CheckBox>("ChkAbortField").IsChecked == true);
+            cfg.Set("captureScreenshots", F<CheckBox>("ChkScreenshots").IsChecked == true);
             cfg.Set("theme", F<CheckBox>("ChkLight").IsChecked == true ? "light" : "dark");
             cfg.Set("adbPath", F<TextBox>("TxtAdbPath").Text.Trim());
             cfg.Pin = F<PasswordBox>("PwdPin").Password;
@@ -669,6 +751,7 @@ namespace DingTalkClockIn
         {
             F<ListBox>("LstLogs").ItemsSource = _host.Log.Recent;
             F<TextBlock>("TxtLogHint").Text = "数据目录：" + _host.Paths.DataDir;
+            F<TextBlock>("TxtLogHint").ToolTip = _host.Paths.DataDir;
             if (_host.Log.Recent.Count > 0)
                 F<ListBox>("LstLogs").SelectedIndex = 0;
         }
@@ -715,7 +798,8 @@ namespace DingTalkClockIn
                 "TxtTodayState", "TxtTodayReason", "TxtLastResult", "ImgLastShot",
                 "RbModeWake", "RbModeFull", "TxtMorningStart", "TxtEveningEnd",
                 "ChkAutostart", "ChkOpenApp", "PwdPin", "TxtAdbPath",
-                "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview"
+                "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
+                "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
             };
             var missing = 0;
             foreach (var n in names)

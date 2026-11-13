@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Drawing;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -20,6 +21,12 @@ namespace DingTalkClockIn
         private readonly Logger _log;
         private readonly AppPaths _paths;
         private string _stayOnBefore;
+        private readonly List<string> _tempShots = new List<string>();
+
+        private bool ScreenshotsEnabled
+        {
+            get { return _cfg.B("captureScreenshots", true); }
+        }
 
         public PunchEngine(Config cfg, Adb adb, Logger log, AppPaths paths)
         {
@@ -58,7 +65,9 @@ namespace DingTalkClockIn
                 if (wakeMode)
                 {
                     var hold = _cfg.I("wakeHoldSec", 60);
-                    var shot = Capture("woke");
+                    string shot = null;
+                    if (ScreenshotsEnabled) shot = Capture("woke");
+                    else _log.Info("截图已关闭，本次不保存截图");
                     _log.Info("保持亮屏 " + hold + " 秒，等待极速打卡生效");
                     Thread.Sleep(hold * 1000);
                     return new RunResult
@@ -88,6 +97,7 @@ namespace DingTalkClockIn
         /// </summary>
         private void FinishSession(bool wasAwake)
         {
+            CleanupTempShots();
             try
             {
                 if (!string.IsNullOrEmpty(_stayOnBefore) && _stayOnBefore != "null")
@@ -108,6 +118,7 @@ namespace DingTalkClockIn
 
         private RunResult RunFull(bool dryRun)
         {
+            var keep = ScreenshotsEnabled;
             var entry = FindPunchEntry();
             _log.Info("点击打卡入口 " + entry.X + "," + entry.Y);
             Tap(entry.X, entry.Y);
@@ -126,25 +137,33 @@ namespace DingTalkClockIn
                 shot = Capture("punchpage");
                 color = ButtonColor(shot);
                 if (color != null) break;
+                Discard(shot);
                 Thread.Sleep(2000);
             }
 
             if (color == null)
             {
-                _log.Error("没有识别到打卡按钮，截图：" + shot);
-                return Fail("没有识别到打卡按钮，请查看截图");
+                Discard(shot);
+                if (keep && shot != null) _log.Error("没有识别到打卡按钮，截图：" + shot);
+                else _log.Error("没有识别到打卡按钮");
+                return Fail(keep ? "没有识别到打卡按钮，请查看截图" : "没有识别到打卡按钮");
             }
 
             var label = color == "blue" ? "内勤（蓝色按钮）" : "外勤（绿色按钮，会记录定位）";
             _log.Info("识别到打卡按钮：" + label);
 
             if (color == "green" && _cfg.B("abortOnFieldPunch", true))
+            {
+                Discard(shot);
                 return Fail("当前不在考勤范围，会打成外勤，已中止");
+            }
 
             if (dryRun)
             {
                 _log.Info("干跑：不点击打卡按钮");
-                return new RunResult { Ok = true, Message = "干跑成功：识别到" + label + "，未点击", Shot = shot };
+                var savedShot = keep ? shot : null;
+                Discard(shot);
+                return new RunResult { Ok = true, Message = "干跑成功：识别到" + label + "，未点击", Shot = savedShot };
             }
 
             var btn = ParsePoint(_cfg.S("advanced.punchButton", "540,1168"), new Point(540, 1168));
@@ -159,13 +178,22 @@ namespace DingTalkClockIn
                 after = Capture("result");
                 if (after != null && ButtonColor(after) == null)
                 {
-                    _log.Info("打卡后界面已变化，结果截图：" + after);
-                    return new RunResult { Ok = true, Message = "打卡动作已完成，请核对截图", Shot = after };
+                    var savedAfter = keep ? after : null;
+                    if (keep) _log.Info("打卡后界面已变化，结果截图：" + after);
+                    else _log.Info("打卡后界面已变化");
+                    Discard(after);
+                    return new RunResult
+                    {
+                        Ok = true,
+                        Message = keep ? "打卡动作已完成，请核对截图" : "打卡动作已完成",
+                        Shot = savedAfter
+                    };
                 }
+                Discard(after);
             }
 
-            _log.Warn("打卡后界面未确认变化：" + after);
-            return new RunResult { Ok = false, Message = "打卡后界面未确认变化，请人工核对", Shot = after };
+            _log.Warn("打卡后界面未确认变化");
+            return new RunResult { Ok = false, Message = "打卡后界面未确认变化，请人工核对", Shot = keep ? after : null };
         }
 
         private bool EnsureDevice()
@@ -365,14 +393,44 @@ namespace DingTalkClockIn
         {
             try
             {
+                var keep = ScreenshotsEnabled;
                 var name = DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + tag + ".png";
-                var local = Path.Combine(_paths.ShotDir, name);
-                return _adb.Capture(local) ? local : null;
+                var local = keep
+                    ? Path.Combine(_paths.ShotDir, name)
+                    : Path.Combine(Path.GetTempPath(), "dtc-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".png");
+                if (!_adb.Capture(local)) return null;
+                if (!keep) _tempShots.Add(local);
+                return local;
             }
             catch
             {
                 return null;
             }
+        }
+
+        /// <summary>截图功能关闭时，判定完成后立刻删除临时截图。</summary>
+        private void Discard(string path)
+        {
+            if (string.IsNullOrEmpty(path) || ScreenshotsEnabled) return;
+            try
+            {
+                if (File.Exists(path)) File.Delete(path);
+            }
+            catch { }
+            _tempShots.Remove(path);
+        }
+
+        private void CleanupTempShots()
+        {
+            foreach (var p in _tempShots.ToArray())
+            {
+                try
+                {
+                    if (File.Exists(p)) File.Delete(p);
+                }
+                catch { }
+            }
+            _tempShots.Clear();
         }
 
         private void Tap(int x, int y)
