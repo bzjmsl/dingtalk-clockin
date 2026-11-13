@@ -1,0 +1,27 @@
+# ---- 构建产物 ----
+app/dist/
+bin/
+obj/
+*.exe
+*.pdb
+
+# ---- 运行时数据：绝对不要提交 ----
+# data/ 里有 ADB 私钥备份、DPAPI 加密的锁屏密码、带个人信息的打卡截图
+data/
+logs/
+shots/
+tmp/
+cache/
+*.log
+
+# ---- 临时/测试产物 ----
+app/tests/*.exe
+app/tests/Probe*.cs
+
+# ---- 编辑器与系统 ----
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+desktop.ini
