@@ -94,6 +94,7 @@ namespace DingTalkClockIn
             if (cmd.Length > 2 && string.Equals(cmd[1], "--render", StringComparison.OrdinalIgnoreCase))
             {
                 if (cmd.Length > 3) _window.ShowPageByName(cmd[3]);
+                System.Threading.Thread.Sleep(3500);
                 _window.RenderTo(cmd[2]);
                 Shutdown(0);
                 return;

@@ -401,6 +401,10 @@
                                     <StackPanel>
                                         <TextBlock Text="手机状态" Style="{StaticResource CardTitle}"/>
                                         <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="*"/>
@@ -425,6 +429,14 @@
                                             </StackPanel>
                                             <Button Grid.Column="3" x:Name="BtnRefreshDevice" Content="刷新" Style="{StaticResource GhostButton}"
                                                     VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Row="1" Margin="0,14,0,0">
+                                                <TextBlock Text="定位" Style="{StaticResource Label}"/>
+                                                <TextBlock x:Name="TxtLocation" Text="—" Style="{StaticResource Value}" Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,14,0,0">
+                                                <TextBlock Text="网络" Style="{StaticResource Label}"/>
+                                                <TextBlock x:Name="TxtNetwork" Text="—" Style="{StaticResource Value}" Margin="0,4,0,0"/>
+                                            </StackPanel>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -530,6 +542,7 @@
                                         <CheckBox x:Name="ChkOpenApp" Content="极速打卡模式下自动打开钉钉界面" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkAbortField" Content="检测到外勤打卡（绿色按钮）时中止" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                        <CheckBox x:Name="ChkPreflight" Content="打卡前检查定位与网络" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                         <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
                                     </StackPanel>
                                 </Border>

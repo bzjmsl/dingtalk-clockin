@@ -175,6 +175,52 @@ namespace DingTalkClockIn
             return -1;
         }
 
+        /// <summary>定位总开关：true 开 / false 关 / null 读不到</summary>
+        public bool? LocationEnabled()
+        {
+            try
+            {
+                var text = Shell("dumpsys location | grep mEnabled=", 20000);
+                if (text.IndexOf("mEnabled=true", StringComparison.Ordinal) >= 0) return true;
+                if (text.IndexOf("mEnabled=false", StringComparison.Ordinal) >= 0) return false;
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>当前默认网络：wifi / mobile / other / none / unknown</summary>
+        public string NetworkState()
+        {
+            bool? validated;
+            return NetworkState(out validated);
+        }
+
+        /// <summary>同时返回系统对该网络是否已通过联网校验（lastValidated）</summary>
+        public string NetworkState(out bool? validated)
+        {
+            validated = null;
+            try
+            {
+                var text = Shell("dumpsys connectivity", 30000);
+                if (text.IndexOf("lastValidated{true}", StringComparison.Ordinal) >= 0) validated = true;
+                else if (text.IndexOf("lastValidated{false}", StringComparison.Ordinal) >= 0) validated = false;
+
+                var m = Regex.Match(text, @"Active default network:\s*(\S+)");
+                if (!m.Success) return "unknown";
+                if (string.Equals(m.Groups[1].Value, "none", StringComparison.OrdinalIgnoreCase)) return "none";
+                if (text.IndexOf("type: WIFI", StringComparison.Ordinal) >= 0) return "wifi";
+                if (text.IndexOf("type: MOBILE", StringComparison.Ordinal) >= 0) return "mobile";
+                return "other";
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
         public bool Capture(string localPath)
         {
             try

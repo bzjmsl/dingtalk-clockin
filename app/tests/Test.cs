@@ -39,6 +39,7 @@ internal class Test
         Check("PIN 加密后可还原", cfg.Pin == "2468", cfg.Pin);
         Check("PIN 不落明文", cfg.S("pin", "").StartsWith("dpapi:"), cfg.S("pin", ""));
         Check("默认保存截图", cfg.B("captureScreenshots", false), "");
+        Check("默认开启打卡前检查", cfg.B("preflightCheck", false), "");
 
         cfg.Set("captureScreenshots", false);
         Check("截图开关可关闭", !cfg.B("captureScreenshots", true), "");

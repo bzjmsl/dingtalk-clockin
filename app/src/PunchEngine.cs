@@ -58,6 +58,9 @@ namespace DingTalkClockIn
                 if (!EnsureUnlocked()) return Fail("解锁失败，请检查锁屏密码设置");
                 _log.Info("屏幕已解锁");
 
+                var preflight = Preflight();
+                if (preflight != null) return preflight;
+
                 var wakeMode = mode == "wake";
                 var openApp = !wakeMode || _cfg.B("openDingTalkInWakeMode", true);
                 if (openApp && !OpenDingTalk()) return Fail("钉钉没有打开");
@@ -224,6 +227,41 @@ namespace DingTalkClockIn
                 Thread.Sleep(10000);
             }
             return false;
+        }
+
+        /// <summary>
+        /// 打卡前检查：没有网络时钉钉无法上报，必须中止；定位未开只做提示
+        /// （实测关闭定位仍可极速打卡，真正致命的是断网）。
+        /// </summary>
+        private RunResult Preflight()
+        {
+            if (!_cfg.B("preflightCheck", true)) return null;
+
+            var location = _adb.LocationEnabled();
+            bool? validated;
+            var network = _adb.NetworkState(out validated);
+
+            _log.Info("打卡前检查：定位=" + (location == null ? "未知" : (location.Value ? "已开启" : "已关闭"))
+                + "，网络=" + NetworkText(network)
+                + (validated == null ? "" : (validated.Value ? "（已联网）" : "（未验证外网）")));
+
+            if (network == "none")
+                return Fail("手机没有可用网络，请连接 WiFi 或打开移动数据后重试");
+            if (validated == false)
+                return Fail("网络已连接但无法访问外网（比如连的是没有外网的热点），请检查网络后重试");
+            if (location == false)
+                _log.Warn("定位服务未开启（实测不影响极速打卡，仅作提示）");
+
+            return null;
+        }
+
+        private static string NetworkText(string state)
+        {
+            if (state == "wifi") return "WiFi";
+            if (state == "mobile") return "移动数据";
+            if (state == "none") return "无";
+            if (state == "other") return "其他网络";
+            return "未知";
         }
 
         private bool IsAwake()

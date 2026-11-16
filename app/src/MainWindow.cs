@@ -222,6 +222,8 @@ namespace DingTalkClockIn
             public string Model;
             public string Serial;
             public int Battery;
+            public bool? Location;
+            public string Network;
         }
 
         private async void RefreshDevice(object sender, RoutedEventArgs e)
@@ -240,6 +242,8 @@ namespace DingTalkClockIn
                     {
                         d.Model = _host.Adb.GetProp("ro.product.model");
                         d.Battery = _host.Adb.BatteryLevel();
+                        d.Location = _host.Adb.LocationEnabled();
+                        d.Network = _host.Adb.NetworkState();
                     }
                 }
                 catch { d.Online = false; d.State = "none"; }
@@ -249,6 +253,18 @@ namespace DingTalkClockIn
             F<TextBlock>("TxtDeviceModel").Text = string.IsNullOrEmpty(info.Model) ? "—" : info.Model;
             F<TextBlock>("TxtDeviceSerial").Text = string.IsNullOrEmpty(info.Serial) ? "—" : info.Serial;
             F<TextBlock>("TxtBattery").Text = info.Battery >= 0 ? info.Battery + "%" : "—";
+
+            var locText = info.Location == null ? "—" : (info.Location.Value ? "已开启" : "已关闭");
+            F<TextBlock>("TxtLocation").Text = info.Online ? locText : "—";
+            F<TextBlock>("TxtLocation").Foreground = info.Online
+                ? (info.Location == false ? Res("Warning") : Res("TextPrimary"))
+                : Res("TextSecondary");
+
+            var netText = info.Online ? NetworkLabel(info.Network) : "—";
+            F<TextBlock>("TxtNetwork").Text = netText;
+            F<TextBlock>("TxtNetwork").Foreground = info.Online
+                ? (info.Network == "none" ? Res("Danger") : Res("TextPrimary"))
+                : Res("TextSecondary");
 
             var state = info.State ?? "none";
             _host.Log.Info("设备状态：" + state + (string.IsNullOrEmpty(info.Serial) ? "" : " (" + info.Serial + ")"));
@@ -266,6 +282,15 @@ namespace DingTalkClockIn
                 : "未连接设备";
             F<TextBlock>("TxtSideStatus").Foreground = state == "device" ? Res("Success") : Res("TextSecondary");
             if (info.Online) _host.BackupAdbKey();
+        }
+
+        private static string NetworkLabel(string state)
+        {
+            if (state == "wifi") return "WiFi";
+            if (state == "mobile") return "移动数据";
+            if (state == "none") return "无";
+            if (state == "other") return "其他";
+            return "未知";
         }
 
         private void TogglePause()
@@ -537,6 +562,7 @@ namespace DingTalkClockIn
             F<CheckBox>("ChkOpenApp").IsChecked = cfg.B("openDingTalkInWakeMode", true);
             F<CheckBox>("ChkAbortField").IsChecked = cfg.B("abortOnFieldPunch", true);
             F<CheckBox>("ChkScreenshots").IsChecked = cfg.B("captureScreenshots", true);
+            F<CheckBox>("ChkPreflight").IsChecked = cfg.B("preflightCheck", true);
             F<CheckBox>("ChkSkipMissed").IsChecked = cfg.B("skipWhenMissed", true);
             F<PasswordBox>("PwdPin").Password = cfg.Pin;
             F<TextBox>("TxtAdbPath").Text = cfg.S("adbPath", Adb.ResolveDefault(_host.Paths.Root));
@@ -576,6 +602,7 @@ namespace DingTalkClockIn
             cfg.Set("openDingTalkInWakeMode", F<CheckBox>("ChkOpenApp").IsChecked == true);
             cfg.Set("abortOnFieldPunch", F<CheckBox>("ChkAbortField").IsChecked == true);
             cfg.Set("captureScreenshots", F<CheckBox>("ChkScreenshots").IsChecked == true);
+            cfg.Set("preflightCheck", F<CheckBox>("ChkPreflight").IsChecked == true);
             cfg.Set("theme", F<CheckBox>("ChkLight").IsChecked == true ? "light" : "dark");
             cfg.Set("adbPath", F<TextBox>("TxtAdbPath").Text.Trim());
             cfg.Pin = F<PasswordBox>("PwdPin").Password;
@@ -800,6 +827,7 @@ namespace DingTalkClockIn
                 "ChkAutostart", "ChkOpenApp", "PwdPin", "TxtAdbPath",
                 "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
                 "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
+                , "ChkPreflight", "TxtLocation", "TxtNetwork"
             };
             var missing = 0;
             foreach (var n in names)
