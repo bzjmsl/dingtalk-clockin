@@ -22,12 +22,13 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 
-          .\app\build.ps1
+          $tag = '${{ github.ref_name }}'
+          $ver = $tag.TrimStart('v')
+          .\app\build.ps1 -Version $ver
 
           $exe = 'app\dist\DingTalkClockIn.exe'
           if (-not (Test-Path $exe)) { throw '构建没有产出 exe' }
 
-          $tag = '${{ github.ref_name }}'
           $asset = "app\dist\DingTalkClockIn-$tag.exe"
           Copy-Item $exe $asset -Force
 

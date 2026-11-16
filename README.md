@@ -32,6 +32,8 @@ powershell -ExecutionPolicy Bypass -File app\build.ps1
 
 产物在 `app\dist\DingTalkClockIn.exe`。不需要 Visual Studio 或 .NET SDK，构建脚本直接调用系统自带的 `csc.exe`，XAML 作为嵌入资源在运行时加载。
 
+版本号默认取最近的 git tag（`v1.0.2` → `1.0.2`），也可以显式指定：`.\app\build.ps1 -Version 1.0.3`，界面左下角显示的就是这个版本。
+
 命令行版本保留在 `dingtalk-clockin.ps1`，用法见文件头部注释。
 
 ## 使用

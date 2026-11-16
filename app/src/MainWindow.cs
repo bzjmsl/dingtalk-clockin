@@ -41,6 +41,7 @@ namespace DingTalkClockIn
             Window = (Window)System.Windows.Markup.XamlReader.Load(stream);
 
             Wire();
+            F<TextBlock>("TxtVersion").Text = "v" + AssemblyVersionText() + " · ADB";
             LoadSettingsToUi();
             RefreshHolidayList();
             BindLogs();
@@ -53,6 +54,19 @@ namespace DingTalkClockIn
         private T F<T>(string name) where T : class
         {
             return Window.FindName(name) as T;
+        }
+
+        private static string AssemblyVersionText()
+        {
+            try
+            {
+                var v = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+                return v == null ? "1.0" : v.ToString(3);
+            }
+            catch
+            {
+                return "1.0";
+            }
         }
 
         private void Wire()
@@ -827,7 +841,7 @@ namespace DingTalkClockIn
                 "ChkAutostart", "ChkOpenApp", "PwdPin", "TxtAdbPath",
                 "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
                 "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
-                , "ChkPreflight", "TxtLocation", "TxtNetwork"
+                , "ChkPreflight", "TxtLocation", "TxtNetwork", "TxtVersion"
             };
             var missing = 0;
             foreach (var n in names)
