@@ -538,12 +538,23 @@
                                 <Border Style="{StaticResource Card}">
                                     <StackPanel>
                                         <TextBlock Text="行为选项" Style="{StaticResource CardTitle}"/>
-                                        <CheckBox x:Name="ChkAutostart" Content="开机自动启动（当前用户）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
-                                        <CheckBox x:Name="ChkOpenApp" Content="极速打卡模式下自动打开钉钉界面" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
-                                        <CheckBox x:Name="ChkAbortField" Content="检测到外勤打卡（绿色按钮）时中止" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
-                                        <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
-                                        <CheckBox x:Name="ChkPreflight" Content="打卡前检查定位与网络" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
-                                        <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <CheckBox x:Name="ChkAutostart" Content="开机自动启动（当前用户）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkOpenApp" Content="极速打卡模式下自动打开钉钉界面" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkAbortField" Content="检测到外勤打卡（绿色按钮）时中止" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="1">
+                                                <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkPreflight" Content="打卡前检查定位与网络" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkNotifications" Content="显示托盘通知（打卡结果、失败与异常）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
+                                            </StackPanel>
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
 

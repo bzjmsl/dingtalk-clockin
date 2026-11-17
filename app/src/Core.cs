@@ -90,6 +90,7 @@ namespace DingTalkClockIn
             if (Get("abortOnFieldPunch") == null) Set("abortOnFieldPunch", true);
             if (Get("captureScreenshots") == null) Set("captureScreenshots", true);
             if (Get("preflightCheck") == null) Set("preflightCheck", true);
+            if (Get("notifications") == null) Set("notifications", true);
             if (Get("logRetentionDays") == null) Set("logRetentionDays", 30);
             if (Get("skipWhenMissed") == null) Set("skipWhenMissed", true);
             if (Get("advanced.punchButton") == null) Set("advanced.punchButton", "540,1168");

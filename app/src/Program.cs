@@ -260,6 +260,7 @@ namespace DingTalkClockIn
 
         public void Notify(string title, string text, bool error)
         {
+            if (!Config.B("notifications", true)) return;
             if (_tray == null) return;
             try
             {

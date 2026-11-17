@@ -40,6 +40,7 @@ internal class Test
         Check("PIN 不落明文", cfg.S("pin", "").StartsWith("dpapi:"), cfg.S("pin", ""));
         Check("默认保存截图", cfg.B("captureScreenshots", false), "");
         Check("默认开启打卡前检查", cfg.B("preflightCheck", false), "");
+        Check("默认显示托盘通知", cfg.B("notifications", false), "");
 
         cfg.Set("captureScreenshots", false);
         Check("截图开关可关闭", !cfg.B("captureScreenshots", true), "");
