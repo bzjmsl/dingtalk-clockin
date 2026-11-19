@@ -36,6 +36,7 @@ namespace DingTalkClockIn
         public PunchEngine Engine { get; private set; }
         public AppState State { get; private set; }
         public Scheduler Scheduler { get; private set; }
+        public PowerMonitor Power { get; private set; }
 
         private readonly bool _selftest;
         private MainWindow _window;
@@ -85,6 +86,7 @@ namespace DingTalkClockIn
             Engine = new PunchEngine(Config, Adb, Log, Paths);
             State = AppState.Load(Paths.StateFile);
             Scheduler = new Scheduler(Config, Holidays, State);
+            Power = new PowerMonitor(Paths, Config, Adb, Log);
 
             ApplyTheme(Config.S("theme", "dark"));
 

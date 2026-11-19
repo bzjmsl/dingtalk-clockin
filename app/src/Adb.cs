@@ -175,6 +175,65 @@ namespace DingTalkClockIn
             return -1;
         }
 
+        /// <summary>读一个 power_supply 节点的整数值，读不到返回 -1</summary>
+        private int ReadBatteryNode(string node, int timeoutMs)
+        {
+            try
+            {
+                var text = Shell("cat /sys/class/power_supply/battery/" + node, timeoutMs);
+                int value;
+                if (int.TryParse(text.Trim(), out value)) return value;
+            }
+            catch { }
+            return -1;
+        }
+
+        /// <summary>电池电压，单位 mV，读不到返回 -1</summary>
+        public int BatteryVoltage()
+        {
+            return ReadBatteryNode("batt_vol", 8000);
+        }
+
+        /// <summary>平均电流，单位 mA，读不到返回 -1</summary>
+        public int BatteryCurrent()
+        {
+            return ReadBatteryNode("BatteryAverageCurrent", 8000);
+        }
+
+        /// <summary>充电状态文本：Charging / Discharging / Not charging …</summary>
+        public string BatteryStatusText()
+        {
+            try { return Shell("cat /sys/class/power_supply/battery/status", 8000).Trim(); }
+            catch { return ""; }
+        }
+
+        /// <summary>是否接着 USB 电源</summary>
+        public bool UsbPowered()
+        {
+            try
+            {
+                var text = Shell("cat /sys/class/power_supply/usb/online", 8000);
+                return text.Trim() == "1";
+            }
+            catch { return false; }
+        }
+
+        /// <summary>本次开机已运行的秒数，读不到返回 -1</summary>
+        public int UptimeSeconds()
+        {
+            try
+            {
+                var text = Shell("cat /proc/uptime", 8000);
+                var parts = text.Trim().Split(' ');
+                double seconds;
+                if (parts.Length > 0 && double.TryParse(parts[0], System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out seconds))
+                    return (int)seconds;
+            }
+            catch { }
+            return -1;
+        }
+
         /// <summary>定位总开关：true 开 / false 关 / null 读不到</summary>
         public bool? LocationEnabled()
         {

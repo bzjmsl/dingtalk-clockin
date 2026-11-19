@@ -437,6 +437,11 @@
                                                 <TextBlock Text="网络" Style="{StaticResource Label}"/>
                                                 <TextBlock x:Name="TxtNetwork" Text="—" Style="{StaticResource Value}" Margin="0,4,0,0"/>
                                             </StackPanel>
+                                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,14,0,0">
+                                                <TextBlock Text="电源监控" Style="{StaticResource Label}"/>
+                                                <TextBlock x:Name="TxtPowerEvent" Text="—" Style="{StaticResource Value}" Margin="0,4,0,0"
+                                                           TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -552,6 +557,7 @@
                                                 <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkPreflight" Content="打卡前检查定位与网络" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkNotifications" Content="显示托盘通知（打卡结果、失败与异常）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkPowerMonitor" Content="后台记录手机电量（用于排查自动关机）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
                                             </StackPanel>
                                         </Grid>

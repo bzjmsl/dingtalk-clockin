@@ -345,4 +345,163 @@ namespace DingTalkClockIn
             }
         }
     }
+
+    /// <summary>
+    /// 后台电源监控：定时读手机电量/电压/电流写入 CSV，
+    /// 并记录断开、重启事件，重启后自动抓取上一轮内核日志，
+    /// 用来判断"手机为什么自己关机"。
+    /// </summary>
+    public class PowerMonitor
+    {
+        private readonly AppPaths _paths;
+        private readonly Config _cfg;
+        private readonly Adb _adb;
+        private readonly Logger _log;
+
+        private bool _wasOnline;
+        private int _lastUptime = -1;
+        private DateTime _lastWarn = DateTime.MinValue;
+        private int _samples;
+
+        public bool Online { get; private set; }
+        public int Capacity { get; private set; }
+        public int Voltage { get; private set; }
+        public int Current { get; private set; }
+        public string Status { get; private set; }
+        public string LastEvent { get; private set; }
+        public DateTime LastPoll { get; private set; }
+        public int Samples { get { return _samples; } }
+
+        public PowerMonitor(AppPaths paths, Config cfg, Adb adb, Logger log)
+        {
+            _paths = paths;
+            _cfg = cfg;
+            _adb = adb;
+            _log = log;
+            Capacity = -1;
+            Voltage = -1;
+            Current = -1;
+            Status = "";
+            LastEvent = "";
+            LastPoll = DateTime.MinValue;
+        }
+
+        /// <summary>采样一次。可能耗时几百毫秒，请放在后台线程调用。</summary>
+        public void Poll()
+        {
+            try
+            {
+                LastPoll = DateTime.Now;
+
+                string serial;
+                var state = _adb.DeviceState(out serial);
+                Online = state == "device";
+
+                if (!Online)
+                {
+                    if (_wasOnline)
+                    {
+                        Record("设备断开（状态：" + StateText(state) + "）");
+                        _log.Warn("电源监控：设备断开 " + StateText(state));
+                    }
+                    _wasOnline = false;
+                    return;
+                }
+
+                var uptime = _adb.UptimeSeconds();
+
+                if (_wasOnline && _lastUptime >= 0 && uptime >= 0 && uptime + 30 < _lastUptime)
+                {
+                    Record("手机重启过（开机时长 " + _lastUptime + "s → " + uptime + "s）");
+                    DumpKernelLog("reboot");
+                }
+                else if (!_wasOnline && _lastUptime >= 0 && uptime >= 0 && uptime + 30 < _lastUptime)
+                {
+                    Record("断开重连且开机时长变短，判定为重启（" + _lastUptime + "s → " + uptime + "s）");
+                    DumpKernelLog("reconnect");
+                }
+
+                _wasOnline = true;
+                if (uptime >= 0) _lastUptime = uptime;
+
+                Capacity = _adb.BatteryLevel();
+                Voltage = _adb.BatteryVoltage();
+                Current = _adb.BatteryCurrent();
+                Status = _adb.BatteryStatusText();
+                var usb = _adb.UsbPowered();
+
+                AppendCsv(usb);
+                _samples++;
+
+                var warnMv = _cfg.I("powerWarnMv", 3650);
+                if (Voltage > 0 && warnMv > 0 && Voltage < warnMv &&
+                    (DateTime.Now - _lastWarn).TotalMinutes >= 30)
+                {
+                    _lastWarn = DateTime.Now;
+                    Record("电压偏低：" + Voltage + " mV（阈值 " + warnMv + " mV）");
+                    _log.Warn("电源监控：电压偏低 " + Voltage + " mV，可能出现关机");
+                }
+            }
+            catch (Exception ex)
+            {
+                try { _log.Warn("电源监控异常：" + ex.Message); } catch { }
+            }
+        }
+
+        private static string StateText(string state)
+        {
+            if (state == "unauthorized") return "未授权";
+            if (state == "offline") return "离线";
+            if (state == "none" || string.IsNullOrEmpty(state)) return "未连接";
+            return state;
+        }
+
+        private void AppendCsv(bool usb)
+        {
+            try
+            {
+                var file = Path.Combine(_paths.PowerDir,
+                    "battery-" + DateTime.Now.ToString("yyyyMMdd") + ".csv");
+                var sb = new StringBuilder();
+                if (!File.Exists(file))
+                    sb.AppendLine("time,capacity,voltage_mv,current_ma,status,usb");
+                sb.AppendFormat("{0:yyyy-MM-dd HH:mm:ss},{1},{2},{3},{4},{5}{6}",
+                    DateTime.Now, Capacity, Voltage, Current, Status, usb ? 1 : 0, Environment.NewLine);
+                File.AppendAllText(file, sb.ToString(), new UTF8Encoding(false));
+            }
+            catch { }
+        }
+
+        private void Record(string text)
+        {
+            LastEvent = DateTime.Now.ToString("MM-dd HH:mm") + " " + text;
+            try
+            {
+                var file = Path.Combine(_paths.PowerDir, "events.log");
+                File.AppendAllText(file,
+                    string.Format("{0:yyyy-MM-dd HH:mm:ss}  {1}{2}", DateTime.Now, text, Environment.NewLine),
+                    new UTF8Encoding(false));
+            }
+            catch { }
+        }
+
+        private void DumpKernelLog(string tag)
+        {
+            try
+            {
+                var kmsg = _adb.Shell("cat /proc/last_kmsg", 30000);
+                if (string.IsNullOrEmpty(kmsg)) return;
+
+                var name = "last_kmsg-" + tag + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
+                File.WriteAllText(Path.Combine(_paths.PowerDir, name), kmsg, new UTF8Encoding(false));
+
+                var reason = _adb.Shell("getprop ro.boot.bootreason", 8000).Trim();
+                Record("已保存上一轮内核日志：" + name + "（开机原因 " + reason + "）");
+            }
+            catch (Exception ex)
+            {
+                try { _log.Warn("保存内核日志失败：" + ex.Message); } catch { }
+            }
+        }
+    }
 }

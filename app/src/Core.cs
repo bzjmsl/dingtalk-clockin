@@ -20,6 +20,7 @@ namespace DingTalkClockIn
         public string LogDir { get; private set; }
         public string ShotDir { get; private set; }
         public string CacheDir { get; private set; }
+        public string PowerDir { get; private set; }
 
         public AppPaths(string baseDir)
         {
@@ -31,11 +32,13 @@ namespace DingTalkClockIn
             LogDir = Path.Combine(DataDir, "logs");
             ShotDir = Path.Combine(DataDir, "shots");
             CacheDir = Path.Combine(DataDir, "cache");
+            PowerDir = Path.Combine(DataDir, "power");
 
             Directory.CreateDirectory(DataDir);
             Directory.CreateDirectory(LogDir);
             Directory.CreateDirectory(ShotDir);
             Directory.CreateDirectory(CacheDir);
+            Directory.CreateDirectory(PowerDir);
         }
     }
 
@@ -91,6 +94,9 @@ namespace DingTalkClockIn
             if (Get("captureScreenshots") == null) Set("captureScreenshots", true);
             if (Get("preflightCheck") == null) Set("preflightCheck", true);
             if (Get("notifications") == null) Set("notifications", true);
+            if (Get("powerMonitor") == null) Set("powerMonitor", true);
+            if (Get("powerMonitorSec") == null) Set("powerMonitorSec", 60);
+            if (Get("powerWarnMv") == null) Set("powerWarnMv", 3650);
             if (Get("logRetentionDays") == null) Set("logRetentionDays", 30);
             if (Get("skipWhenMissed") == null) Set("skipWhenMissed", true);
             if (Get("advanced.punchButton") == null) Set("advanced.punchButton", "540,1168");

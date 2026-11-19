@@ -41,6 +41,8 @@ internal class Test
         Check("默认保存截图", cfg.B("captureScreenshots", false), "");
         Check("默认开启打卡前检查", cfg.B("preflightCheck", false), "");
         Check("默认显示托盘通知", cfg.B("notifications", false), "");
+        Check("默认开启电源监控", cfg.B("powerMonitor", false), "");
+        Check("默认采样间隔 60 秒", cfg.I("powerMonitorSec", 0) == 60, cfg.I("powerMonitorSec", 0).ToString());
 
         cfg.Set("captureScreenshots", false);
         Check("截图开关可关闭", !cfg.B("captureScreenshots", true), "");

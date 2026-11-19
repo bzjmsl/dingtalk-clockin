@@ -29,6 +29,8 @@ namespace DingTalkClockIn
         private bool _running;
         private string _lastShot;
         private DateTime _retryAfter = DateTime.MinValue;
+        private DateTime _nextPowerPoll = DateTime.MinValue;
+        private bool _powerPolling;
 
         public Window Window { get; private set; }
 
@@ -137,6 +139,8 @@ namespace DingTalkClockIn
         private async void OnTick(object sender, EventArgs e)
         {
             UpdateOverview();
+            UpdatePowerLabels();
+            MaybePollPower();
             if (_running) return;
             if (DateTime.Now < _retryAfter) return;
             var next = _host.Scheduler.NextRun;
@@ -227,6 +231,66 @@ namespace DingTalkClockIn
             var left = next - DateTime.Now;
             if (left.TotalSeconds < 0) left = TimeSpan.Zero;
             F<TextBlock>("TxtCountdown").Text = string.Format("还有 {0:hh\\:mm\\:ss}（窗口内随机时刻）", left);
+        }
+
+        /// <summary>按设定的间隔在后台采样一次电源数据，不阻塞界面。</summary>
+        private void MaybePollPower()
+        {
+            try
+            {
+                if (!_host.Config.B("powerMonitor", true)) return;
+                if (_powerPolling) return;
+                if (DateTime.Now < _nextPowerPoll) return;
+
+                var sec = _host.Config.I("powerMonitorSec", 60);
+                if (sec < 10) sec = 10;
+                _nextPowerPoll = DateTime.Now.AddSeconds(sec);
+                _powerPolling = true;
+
+                Task.Run(delegate
+                {
+                    try { _host.Power.Poll(); }
+                    catch { }
+                    finally { _powerPolling = false; }
+                });
+            }
+            catch { }
+        }
+
+        private void UpdatePowerLabels()
+        {
+            try
+            {
+                var pm = _host.Power;
+                if (pm == null) return;
+
+                var batt = F<TextBlock>("TxtBattery");
+                if (batt != null && pm.Online && pm.Capacity >= 0)
+                {
+                    batt.Text = pm.Capacity + "%" + (pm.Voltage > 0 ? "  " + pm.Voltage + "mV" : "");
+                }
+
+                var ev = F<TextBlock>("TxtPowerEvent");
+                if (ev != null)
+                {
+                    if (!string.IsNullOrEmpty(pm.LastEvent))
+                    {
+                        ev.Text = pm.LastEvent;
+                        ev.Foreground = pm.LastEvent.IndexOf("电压偏低") >= 0 ? Res("Warning") : Res("TextPrimary");
+                    }
+                    else if (pm.Samples > 0)
+                    {
+                        ev.Text = "已采样 " + pm.Samples + " 次，无异常";
+                        ev.Foreground = Res("TextPrimary");
+                    }
+                    else
+                    {
+                        ev.Text = "等待首次采样…";
+                        ev.Foreground = Res("TextSecondary");
+                    }
+                }
+            }
+            catch { }
         }
 
         private class DeviceInfo
@@ -578,6 +642,7 @@ namespace DingTalkClockIn
             F<CheckBox>("ChkScreenshots").IsChecked = cfg.B("captureScreenshots", true);
             F<CheckBox>("ChkPreflight").IsChecked = cfg.B("preflightCheck", true);
             F<CheckBox>("ChkNotifications").IsChecked = cfg.B("notifications", true);
+            F<CheckBox>("ChkPowerMonitor").IsChecked = cfg.B("powerMonitor", true);
             F<CheckBox>("ChkSkipMissed").IsChecked = cfg.B("skipWhenMissed", true);
             F<PasswordBox>("PwdPin").Password = cfg.Pin;
             F<TextBox>("TxtAdbPath").Text = cfg.S("adbPath", Adb.ResolveDefault(_host.Paths.Root));
@@ -619,6 +684,7 @@ namespace DingTalkClockIn
             cfg.Set("captureScreenshots", F<CheckBox>("ChkScreenshots").IsChecked == true);
             cfg.Set("preflightCheck", F<CheckBox>("ChkPreflight").IsChecked == true);
             cfg.Set("notifications", F<CheckBox>("ChkNotifications").IsChecked == true);
+            cfg.Set("powerMonitor", F<CheckBox>("ChkPowerMonitor").IsChecked == true);
             cfg.Set("theme", F<CheckBox>("ChkLight").IsChecked == true ? "light" : "dark");
             cfg.Set("adbPath", F<TextBox>("TxtAdbPath").Text.Trim());
             cfg.Pin = F<PasswordBox>("PwdPin").Password;
@@ -843,7 +909,8 @@ namespace DingTalkClockIn
                 "ChkAutostart", "ChkOpenApp", "PwdPin", "TxtAdbPath",
                 "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
                 "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
-                , "ChkPreflight", "ChkNotifications", "TxtLocation", "TxtNetwork", "TxtVersion"
+                , "ChkPreflight", "ChkNotifications", "TxtLocation", "TxtNetwork", "TxtVersion",
+                "ChkPowerMonitor", "TxtPowerEvent"
             };
             var missing = 0;
             foreach (var n in names)
