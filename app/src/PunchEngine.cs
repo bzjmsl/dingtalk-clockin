@@ -38,7 +38,6 @@ namespace DingTalkClockIn
 
         public RunResult Run(string mode, bool dryRun)
         {
-            var wasAwake = false;
             try
             {
                 _log.Info("开始执行（模式=" + mode + (dryRun ? "，干跑" : "") + "）");
@@ -53,7 +52,6 @@ namespace DingTalkClockIn
                         return Fail("手机处于 offline 状态，请拔插数据线后重试");
                     return Fail("手机未连接，请检查数据线和 USB 调试开关");
                 }
-                wasAwake = IsAwake();
                 if (!EnsureAwake()) return Fail("无法唤醒屏幕");
                 if (!EnsureUnlocked()) return Fail("解锁失败，请检查锁屏密码设置");
                 _log.Info("屏幕已解锁");
@@ -90,15 +88,16 @@ namespace DingTalkClockIn
             }
             finally
             {
-                FinishSession(wasAwake);
+                FinishSession(dryRun);
             }
         }
 
         /// <summary>
-        /// 收尾：恢复"充电常亮"设置；如果是程序自己唤醒的手机，再回到桌面并锁屏，
-        /// 否则钉钉会一直留在前台，极速打卡随后会在打卡时段自动触发。
+        /// 收尾：恢复"充电常亮"设置；只要屏幕还亮着就回到桌面并锁屏，
+        /// 否则钉钉会一直留在前台把屏幕占住（极速打卡也会在下一个时段自己触发）。
+        /// 干跑不锁屏，避免打断正在操作手机的人。
         /// </summary>
-        private void FinishSession(bool wasAwake)
+        private void FinishSession(bool dryRun)
         {
             CleanupTempShots();
             try
@@ -108,13 +107,30 @@ namespace DingTalkClockIn
                 else
                     _adb.Shell("svc power stayon false", 10000);
 
-                if (!wasAwake)
+                if (dryRun)
                 {
-                    _adb.Shell("input keyevent 3", 10000);
-                    Thread.Sleep(600);
-                    _adb.Shell("input keyevent 26", 10000);
-                    _log.Info("已恢复常亮设置并锁屏");
+                    _log.Info("干跑结束，不锁屏");
+                    return;
                 }
+
+                if (!_cfg.B("lockAfterRun", true))
+                {
+                    _log.Info("已恢复常亮设置（自动锁屏已关闭）");
+                    return;
+                }
+
+                // 无论手机是不是程序唤醒的，只要现在亮着就回桌面并熄屏，
+                // 否则钉钉会一直留在前台把屏幕占着。
+                if (!IsAwake())
+                {
+                    _log.Info("已恢复常亮设置（屏幕已熄灭）");
+                    return;
+                }
+
+                _adb.Shell("input keyevent 3", 10000);
+                Thread.Sleep(600);
+                _adb.Shell("input keyevent 26", 10000);
+                _log.Info("已恢复常亮设置并锁屏");
             }
             catch { }
         }

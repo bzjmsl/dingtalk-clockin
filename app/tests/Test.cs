@@ -42,6 +42,7 @@ internal class Test
         Check("默认开启打卡前检查", cfg.B("preflightCheck", false), "");
         Check("默认显示托盘通知", cfg.B("notifications", false), "");
         Check("默认开启电源监控", cfg.B("powerMonitor", false), "");
+        Check("默认执行后锁屏", cfg.B("lockAfterRun", false), "");
         Check("默认采样间隔 60 秒", cfg.I("powerMonitorSec", 0) == 60, cfg.I("powerMonitorSec", 0).ToString());
 
         cfg.Set("captureScreenshots", false);

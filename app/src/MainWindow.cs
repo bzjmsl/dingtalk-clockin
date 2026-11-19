@@ -643,6 +643,7 @@ namespace DingTalkClockIn
             F<CheckBox>("ChkPreflight").IsChecked = cfg.B("preflightCheck", true);
             F<CheckBox>("ChkNotifications").IsChecked = cfg.B("notifications", true);
             F<CheckBox>("ChkPowerMonitor").IsChecked = cfg.B("powerMonitor", true);
+            F<CheckBox>("ChkLockAfter").IsChecked = cfg.B("lockAfterRun", true);
             F<CheckBox>("ChkSkipMissed").IsChecked = cfg.B("skipWhenMissed", true);
             F<PasswordBox>("PwdPin").Password = cfg.Pin;
             F<TextBox>("TxtAdbPath").Text = cfg.S("adbPath", Adb.ResolveDefault(_host.Paths.Root));
@@ -685,6 +686,7 @@ namespace DingTalkClockIn
             cfg.Set("preflightCheck", F<CheckBox>("ChkPreflight").IsChecked == true);
             cfg.Set("notifications", F<CheckBox>("ChkNotifications").IsChecked == true);
             cfg.Set("powerMonitor", F<CheckBox>("ChkPowerMonitor").IsChecked == true);
+            cfg.Set("lockAfterRun", F<CheckBox>("ChkLockAfter").IsChecked == true);
             cfg.Set("theme", F<CheckBox>("ChkLight").IsChecked == true ? "light" : "dark");
             cfg.Set("adbPath", F<TextBox>("TxtAdbPath").Text.Trim());
             cfg.Pin = F<PasswordBox>("PwdPin").Password;
@@ -910,7 +912,7 @@ namespace DingTalkClockIn
                 "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
                 "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
                 , "ChkPreflight", "ChkNotifications", "TxtLocation", "TxtNetwork", "TxtVersion",
-                "ChkPowerMonitor", "TxtPowerEvent"
+                "ChkPowerMonitor", "TxtPowerEvent", "ChkLockAfter"
             };
             var missing = 0;
             foreach (var n in names)

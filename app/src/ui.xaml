@@ -552,6 +552,7 @@
                                                 <CheckBox x:Name="ChkAutostart" Content="开机自动启动（当前用户）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkOpenApp" Content="极速打卡模式下自动打开钉钉界面" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkAbortField" Content="检测到外勤打卡（绿色按钮）时中止" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkLockAfter" Content="执行结束后回桌面并锁屏" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                             </StackPanel>
                                             <StackPanel Grid.Column="1">
                                                 <CheckBox x:Name="ChkScreenshots" Content="保存打卡截图（关闭后不写入磁盘）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
