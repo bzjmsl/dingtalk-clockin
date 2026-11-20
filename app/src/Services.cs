@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace DingTalkClockIn
@@ -472,17 +474,25 @@ namespace DingTalkClockIn
             catch { }
         }
 
+        private static readonly object EventsGate = new object();
+
         private void Record(string text)
         {
             LastEvent = DateTime.Now.ToString("MM-dd HH:mm") + " " + text;
             try
             {
                 var file = Path.Combine(_paths.PowerDir, "events.log");
-                File.AppendAllText(file,
-                    string.Format("{0:yyyy-MM-dd HH:mm:ss}  {1}{2}", DateTime.Now, text, Environment.NewLine),
-                    new UTF8Encoding(false));
+                var line = string.Format("{0:yyyy-MM-dd HH:mm:ss}  {1}{2}", DateTime.Now, text, Environment.NewLine);
+                lock (EventsGate) File.AppendAllText(file, line, new UTF8Encoding(false));
             }
             catch { }
+        }
+
+        /// <summary>记一条外部事件（例如系统日志抓取中断），会写进 events.log 并显示在界面上。</summary>
+        public void Note(string text)
+        {
+            Record(text);
+            try { _log.Warn("电源监控：" + text); } catch { }
         }
 
         private void DumpKernelLog(string tag)
@@ -502,6 +512,194 @@ namespace DingTalkClockIn
             {
                 try { _log.Warn("保存内核日志失败：" + ex.Message); } catch { }
             }
+        }
+    }
+
+    /// <summary>
+    /// 常驻把手机的 logcat（system + events 缓冲）落到 data\power\logcat-yyyyMMdd.log。
+    /// 手机是断电式关机时，它自己什么都记不下来；这条流在 PC 上，能留下关机前最后一刻。
+    /// 系统主动关机会出现 PowerManagerService / ShutdownThread 的记录；硬件掉电则戛然而止。
+    /// </summary>
+    public class LogStreamer
+    {
+        private const long MaxBytesPerDay = 64L * 1024 * 1024;
+        private const int KeepDays = 7;
+
+        private readonly Adb _adb;
+        private readonly AppPaths _paths;
+        private readonly Logger _log;
+        private readonly Action<string> _note;
+
+        private readonly object _gate = new object();
+        private Process _proc;
+        private StreamWriter _writer;
+        private DateTime _day = DateTime.MinValue;
+        private long _bytes;
+        private bool _fullWarned;
+        private volatile bool _stopping;
+        private Timer _watchdog;
+        private DateTime _nextTry = DateTime.MinValue;
+
+        public bool Running { get; private set; }
+        public long Bytes { get { return Interlocked.Read(ref _bytes); } }
+
+        public LogStreamer(Adb adb, AppPaths paths, Logger log, Action<string> note)
+        {
+            _adb = adb;
+            _paths = paths;
+            _log = log;
+            _note = note;
+        }
+
+        public void Start()
+        {
+            if (_stopping) return;
+            lock (_gate)
+            {
+                if (_proc != null) return;
+                try
+                {
+                    PruneOld();
+                    _proc = _adb.StartStream("logcat -v time -b system -b events");
+                    _proc.EnableRaisingEvents = true;
+                    _proc.OutputDataReceived += OnLine;
+                    _proc.ErrorDataReceived += delegate { };
+                    _proc.Exited += OnExited;
+                    _proc.BeginOutputReadLine();
+                    _proc.BeginErrorReadLine();
+                    Running = true;
+                    if (_watchdog == null) _watchdog = new Timer(Check, null, 30000, 30000);
+                    _log.Info("已开始抓取手机系统日志");
+                }
+                catch (Exception ex)
+                {
+                    try { if (_proc != null) _proc.Dispose(); } catch { }
+                    _proc = null;
+                    Running = false;
+                    _nextTry = DateTime.Now.AddMinutes(1);
+                    _log.Warn("启动系统日志抓取失败：" + ex.Message);
+                }
+            }
+        }
+
+        public void Stop()
+        {
+            _stopping = true;
+            try { if (_watchdog != null) { _watchdog.Dispose(); _watchdog = null; } } catch { }
+
+            Process proc;
+            lock (_gate)
+            {
+                proc = _proc;
+                _proc = null;
+                Running = false;
+            }
+            if (proc != null)
+            {
+                try { if (!proc.HasExited) { proc.Kill(); proc.WaitForExit(5000); } } catch { }
+                try { proc.Dispose(); } catch { }
+            }
+            lock (_gate)
+            {
+                try { if (_writer != null) { _writer.Flush(); _writer.Dispose(); } } catch { }
+                _writer = null;
+            }
+            try { _log.Info("已停止抓取手机系统日志"); } catch { }
+        }
+
+        private void Check(object state)
+        {
+            if (_stopping) return;
+            try
+            {
+                lock (_gate)
+                {
+                    if (_proc != null && !_proc.HasExited) return;
+                    if (_proc != null)
+                    {
+                        try { _proc.Dispose(); } catch { }
+                        _proc = null;
+                    }
+                }
+                if (DateTime.Now < _nextTry) return;
+                Start();
+            }
+            catch { }
+        }
+
+        private void OnExited(object sender, EventArgs e)
+        {
+            var code = -1;
+            try { code = ((Process)sender).ExitCode; } catch { }
+            lock (_gate) { Running = false; }
+            if (_stopping) return;
+            _nextTry = DateTime.Now.AddSeconds(20);
+            if (_note != null)
+            {
+                try { _note("手机系统日志中断（退出码 " + code + "），若手机此刻关机即为关机时刻"); } catch { }
+            }
+        }
+
+        private void OnLine(object sender, DataReceivedEventArgs e)
+        {
+            if (e.Data == null) return;
+            try
+            {
+                var now = DateTime.Now;
+                lock (_gate)
+                {
+                    if (now.Date != _day) Roll(now);
+                    if (_writer == null) return;
+                    if (Interlocked.Read(ref _bytes) >= MaxBytesPerDay)
+                    {
+                        if (!_fullWarned)
+                        {
+                            _fullWarned = true;
+                            _writer.WriteLine("# 当天日志已超过 64 MB，今天不再记录");
+                            _writer.Flush();
+                            _writer.Dispose();
+                            _writer = null;
+                        }
+                        return;
+                    }
+                    _writer.WriteLine(e.Data);
+                    _writer.Flush();
+                    Interlocked.Add(ref _bytes, e.Data.Length + 2);
+                }
+            }
+            catch { }
+        }
+
+        private void Roll(DateTime now)
+        {
+            try { if (_writer != null) _writer.Dispose(); } catch { }
+            _writer = null;
+            _day = now.Date;
+            Interlocked.Exchange(ref _bytes, 0);
+            _fullWarned = false;
+
+            var file = Path.Combine(_paths.PowerDir, "logcat-" + now.ToString("yyyyMMdd") + ".log");
+            var fresh = !File.Exists(file) || new FileInfo(file).Length == 0;
+            var stream = new FileStream(file, FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+            _writer = new StreamWriter(stream, new UTF8Encoding(false));
+            if (fresh)
+            {
+                _writer.WriteLine("# " + now.ToString("yyyy-MM-dd HH:mm:ss") + " 开始记录手机系统日志");
+                _writer.Flush();
+            }
+        }
+
+        private void PruneOld()
+        {
+            try
+            {
+                var cutoff = DateTime.Now.AddDays(-KeepDays);
+                foreach (var f in Directory.GetFiles(_paths.PowerDir, "logcat-*.log"))
+                {
+                    try { if (File.GetLastWriteTime(f) < cutoff) File.Delete(f); } catch { }
+                }
+            }
+            catch { }
         }
     }
 }

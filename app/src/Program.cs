@@ -37,6 +37,7 @@ namespace DingTalkClockIn
         public AppState State { get; private set; }
         public Scheduler Scheduler { get; private set; }
         public PowerMonitor Power { get; private set; }
+        public LogStreamer LogStream { get; private set; }
 
         private readonly bool _selftest;
         private MainWindow _window;
@@ -87,6 +88,7 @@ namespace DingTalkClockIn
             State = AppState.Load(Paths.StateFile);
             Scheduler = new Scheduler(Config, Holidays, State);
             Power = new PowerMonitor(Paths, Config, Adb, Log);
+            LogStream = new LogStreamer(Adb, Paths, Log, Power.Note);
 
             ApplyTheme(Config.S("theme", "dark"));
 
@@ -112,6 +114,7 @@ namespace DingTalkClockIn
 
             _window.Window.Show();
             CreateTray();
+            if (Config.B("powerMonitor", true)) LogStream.Start();
             _window.StartTimer();
             Log.Info("程序已启动，模式=" + Config.S("mode", "wake"));
         }
@@ -248,6 +251,7 @@ namespace DingTalkClockIn
 
         public void ExitApp()
         {
+            try { if (LogStream != null) LogStream.Stop(); } catch { }
             try
             {
                 if (_tray != null)

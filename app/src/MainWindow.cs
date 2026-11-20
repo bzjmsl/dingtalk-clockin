@@ -26,11 +26,14 @@ namespace DingTalkClockIn
     {
         private readonly AppHost _host;
         private DispatcherTimer _timer;
-        private bool _running;
+        private volatile bool _running;
         private string _lastShot;
         private DateTime _retryAfter = DateTime.MinValue;
         private DateTime _nextPowerPoll = DateTime.MinValue;
         private bool _powerPolling;
+        private DateTime _nextStayOnHeal = DateTime.MinValue;
+        private bool _stayOnHealing;
+        private volatile int _cleanToken;
 
         public Window Window { get; private set; }
 
@@ -141,6 +144,7 @@ namespace DingTalkClockIn
             UpdateOverview();
             UpdatePowerLabels();
             MaybePollPower();
+            MaybeHealStayOn();
             if (_running) return;
             if (DateTime.Now < _retryAfter) return;
             var next = _host.Scheduler.NextRun;
@@ -231,6 +235,34 @@ namespace DingTalkClockIn
             var left = next - DateTime.Now;
             if (left.TotalSeconds < 0) left = TimeSpan.Zero;
             F<TextBlock>("TxtCountdown").Text = string.Format("还有 {0:hh\\:mm\\:ss}（窗口内随机时刻）", left);
+        }
+
+        /// <summary>
+        /// 上次执行被打断时"充电常亮"没恢复，手机连上后补一次；没有 pending 文件时什么也不做。
+        /// 不依赖电源监控开关，执行中也不插手（那时常亮是正常的）。
+        /// </summary>
+        private void MaybeHealStayOn()
+        {
+            try
+            {
+                if (_stayOnHealing || _running) return;
+                if (DateTime.Now < _nextStayOnHeal) return;
+                if (!_host.Engine.HasPendingStayOn()) return;
+                _stayOnHealing = true;
+                Task.Run(delegate
+                {
+                    var ok = true;
+                    try
+                    {
+                        string serial;
+                        if (_host.Adb.DeviceState(out serial) == "device") ok = _host.Engine.RecoverStayOn();
+                    }
+                    catch { ok = false; }
+                    if (!ok) _nextStayOnHeal = DateTime.Now.AddMinutes(1);
+                    _stayOnHealing = false;
+                });
+            }
+            catch { }
         }
 
         /// <summary>按设定的间隔在后台采样一次电源数据，不阻塞界面。</summary>
@@ -417,6 +449,7 @@ namespace DingTalkClockIn
 
                 ApplyResult(result, dryRun);
                 _host.Notify(result.Ok ? "打卡完成" : "打卡未完成", result.Message, !result.Ok);
+                if (!dryRun) ScheduleBackgroundCleanup();
             }
             catch (Exception ex)
             {
@@ -429,6 +462,24 @@ namespace DingTalkClockIn
                 btn.IsEnabled = true;
                 UpdateOverview();
             }
+        }
+
+        /// <summary>
+        /// 打卡结束后间隔一段时间再清理后台，给钉钉留出上报打卡结果的时间。
+        /// 延迟期间如果又触发了一次执行，就放弃这次清理，避免打断打卡。
+        /// </summary>
+        private void ScheduleBackgroundCleanup()
+        {
+            if (!_host.Config.B("cleanAfterRun", true)) return;
+            var delay = _host.Config.I("cleanDelaySec", 60);
+            if (delay < 0) delay = 0;
+            var token = ++_cleanToken;
+            Task.Delay(TimeSpan.FromSeconds(delay)).ContinueWith(delegate
+            {
+                if (token != _cleanToken || _running) return;
+                _host.Log.Info("打卡结束已 " + delay + " 秒，开始清理手机后台");
+                _host.Engine.CleanBackground();
+            });
         }
 
         private void ApplyResult(RunResult result, bool dryRun)
@@ -644,6 +695,8 @@ namespace DingTalkClockIn
             F<CheckBox>("ChkNotifications").IsChecked = cfg.B("notifications", true);
             F<CheckBox>("ChkPowerMonitor").IsChecked = cfg.B("powerMonitor", true);
             F<CheckBox>("ChkLockAfter").IsChecked = cfg.B("lockAfterRun", true);
+            F<CheckBox>("ChkCleanAfter").IsChecked = cfg.B("cleanAfterRun", true);
+            F<TextBox>("TxtCleanDelay").Text = cfg.I("cleanDelaySec", 60).ToString();
             F<CheckBox>("ChkSkipMissed").IsChecked = cfg.B("skipWhenMissed", true);
             F<PasswordBox>("PwdPin").Password = cfg.Pin;
             F<TextBox>("TxtAdbPath").Text = cfg.S("adbPath", Adb.ResolveDefault(_host.Paths.Root));
@@ -674,6 +727,15 @@ namespace DingTalkClockIn
                 }
             }
 
+            int cleanDelay;
+            if (!int.TryParse(F<TextBox>("TxtCleanDelay").Text.Trim(), out cleanDelay)
+                || cleanDelay < 0 || cleanDelay > 3600)
+            {
+                F<TextBlock>("TxtSettingsHint").Foreground = Res("Danger");
+                F<TextBlock>("TxtSettingsHint").Text = "清理延迟请填 0–3600 之间的整数秒";
+                return;
+            }
+
             cfg.Set("mode", F<RadioButton>("RbModeWake").IsChecked == true ? "wake" : "full");
             cfg.Set("windows.morning.start", F<TextBox>("TxtMorningStart").Text.Trim());
             cfg.Set("windows.morning.end", F<TextBox>("TxtMorningEnd").Text.Trim());
@@ -687,6 +749,8 @@ namespace DingTalkClockIn
             cfg.Set("notifications", F<CheckBox>("ChkNotifications").IsChecked == true);
             cfg.Set("powerMonitor", F<CheckBox>("ChkPowerMonitor").IsChecked == true);
             cfg.Set("lockAfterRun", F<CheckBox>("ChkLockAfter").IsChecked == true);
+            cfg.Set("cleanAfterRun", F<CheckBox>("ChkCleanAfter").IsChecked == true);
+            cfg.Set("cleanDelaySec", cleanDelay);
             cfg.Set("theme", F<CheckBox>("ChkLight").IsChecked == true ? "light" : "dark");
             cfg.Set("adbPath", F<TextBox>("TxtAdbPath").Text.Trim());
             cfg.Pin = F<PasswordBox>("PwdPin").Password;
@@ -711,6 +775,8 @@ namespace DingTalkClockIn
             F<TextBox>("TxtEveningEnd").Text = "17:50";
             F<CheckBox>("ChkOpenApp").IsChecked = true;
             F<CheckBox>("ChkAbortField").IsChecked = true;
+            F<CheckBox>("ChkCleanAfter").IsChecked = true;
+            F<TextBox>("TxtCleanDelay").Text = "60";
             F<TextBlock>("TxtSettingsHint").Foreground = Res("TextSecondary");
             F<TextBlock>("TxtSettingsHint").Text = "已填入默认值，点保存生效";
         }
@@ -912,7 +978,8 @@ namespace DingTalkClockIn
                 "LstHolidays", "LstLogs", "LstShots", "ImgShotPreview",
                 "ChkScreenshots", "BtnDeleteShot", "BtnClearShots"
                 , "ChkPreflight", "ChkNotifications", "TxtLocation", "TxtNetwork", "TxtVersion",
-                "ChkPowerMonitor", "TxtPowerEvent", "ChkLockAfter"
+                "ChkPowerMonitor", "TxtPowerEvent", "ChkLockAfter",
+                "ChkCleanAfter", "TxtCleanDelay"
             };
             var missing = 0;
             foreach (var n in names)

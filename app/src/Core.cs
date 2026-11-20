@@ -96,6 +96,8 @@ namespace DingTalkClockIn
             if (Get("notifications") == null) Set("notifications", true);
             if (Get("powerMonitor") == null) Set("powerMonitor", true);
             if (Get("lockAfterRun") == null) Set("lockAfterRun", true);
+            if (Get("cleanAfterRun") == null) Set("cleanAfterRun", true);
+            if (Get("cleanDelaySec") == null) Set("cleanDelaySec", 60);
             if (Get("powerMonitorSec") == null) Set("powerMonitorSec", 60);
             if (Get("powerWarnMv") == null) Set("powerWarnMv", 3650);
             if (Get("logRetentionDays") == null) Set("logRetentionDays", 30);

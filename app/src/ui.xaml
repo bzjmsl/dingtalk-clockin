@@ -559,6 +559,12 @@
                                                 <CheckBox x:Name="ChkPreflight" Content="打卡前检查定位与网络" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkNotifications" Content="显示托盘通知（打卡结果、失败与异常）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
                                                 <CheckBox x:Name="ChkPowerMonitor" Content="后台记录手机电量（用于排查自动关机）" Style="{StaticResource Switch}" Margin="0,0,0,14"/>
+                                                <CheckBox x:Name="ChkCleanAfter" Content="打卡结束后清理后台（关闭钉钉释放内存）" Style="{StaticResource Switch}" Margin="0,0,0,6"/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                                    <TextBlock Text="延迟" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                    <TextBox x:Name="TxtCleanDelay" Width="52" Style="{StaticResource InputBox}"/>
+                                                    <TextBlock Text="秒执行" Style="{StaticResource Label}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                                </StackPanel>
                                                 <CheckBox x:Name="ChkSkipMissed" Content="错过时间窗口则跳过（不补打）" Style="{StaticResource Switch}" IsEnabled="False"/>
                                             </StackPanel>
                                         </Grid>

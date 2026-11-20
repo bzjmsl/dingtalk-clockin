@@ -50,7 +50,7 @@ namespace DingTalkClockIn
             }
         }
 
-        public string Run(string args, int timeoutMs)
+        private ProcessStartInfo BuildStartInfo(string args)
         {
             var psi = new ProcessStartInfo();
             if (IsScript)
@@ -69,6 +69,12 @@ namespace DingTalkClockIn
             psi.RedirectStandardError = true;
             psi.StandardOutputEncoding = Encoding.UTF8;
             psi.StandardErrorEncoding = Encoding.UTF8;
+            return psi;
+        }
+
+        public string Run(string args, int timeoutMs)
+        {
+            var psi = BuildStartInfo(args);
 
             using (var p = new Process())
             {
@@ -91,6 +97,15 @@ namespace DingTalkClockIn
         public string Shell(string command, int timeoutMs)
         {
             return Run("shell \"" + command + "\"", timeoutMs);
+        }
+
+        /// <summary>开一条常驻命令（如 logcat），进程的读取和结束由调用方负责。</summary>
+        public Process StartStream(string args)
+        {
+            var p = new Process();
+            p.StartInfo = BuildStartInfo(args);
+            p.Start();
+            return p;
         }
 
         public bool StartServer()

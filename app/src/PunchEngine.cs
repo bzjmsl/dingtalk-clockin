@@ -102,10 +102,7 @@ namespace DingTalkClockIn
             CleanupTempShots();
             try
             {
-                if (!string.IsNullOrEmpty(_stayOnBefore) && _stayOnBefore != "null")
-                    _adb.Shell("settings put global stay_on_while_plugged_in " + _stayOnBefore, 10000);
-                else
-                    _adb.Shell("svc power stayon false", 10000);
+                RestoreStayOn();
 
                 if (dryRun)
                 {
@@ -115,7 +112,7 @@ namespace DingTalkClockIn
 
                 if (!_cfg.B("lockAfterRun", true))
                 {
-                    _log.Info("已恢复常亮设置（自动锁屏已关闭）");
+                    _log.Info("自动锁屏已关闭，屏幕保持原样");
                     return;
                 }
 
@@ -123,16 +120,139 @@ namespace DingTalkClockIn
                 // 否则钉钉会一直留在前台把屏幕占着。
                 if (!IsAwake())
                 {
-                    _log.Info("已恢复常亮设置（屏幕已熄灭）");
+                    _log.Info("屏幕本来就已熄灭");
                     return;
                 }
 
                 _adb.Shell("input keyevent 3", 10000);
                 Thread.Sleep(600);
                 _adb.Shell("input keyevent 26", 10000);
-                _log.Info("已恢复常亮设置并锁屏");
+                _log.Info("已回桌面并熄屏");
             }
             catch { }
+        }
+
+        private string PendingFile
+        {
+            get { return Path.Combine(_paths.DataDir, "stay_on.pending"); }
+        }
+
+        /// <summary>只接受 "0".."7"；adb 掉线时返回的是错误文本，不能直接写回设置里。</summary>
+        private static bool IsStayOnValue(string value)
+        {
+            return !string.IsNullOrEmpty(value) && value.Length == 1 && value[0] >= '0' && value[0] <= '7';
+        }
+
+        private void SavePending(string value)
+        {
+            try
+            {
+                File.WriteAllText(PendingFile, IsStayOnValue(value) ? value : "null");
+            }
+            catch { }
+        }
+
+        private void ClearPending()
+        {
+            try { if (File.Exists(PendingFile)) File.Delete(PendingFile); } catch { }
+        }
+
+        public bool HasPendingStayOn()
+        {
+            try { return File.Exists(PendingFile); } catch { return false; }
+        }
+
+        /// <summary>读 pending：null = 没有标记；"null" = 原值本来就是未设置；"0".."7" = 原值。</summary>
+        private string ReadPending()
+        {
+            try
+            {
+                if (!File.Exists(PendingFile)) return null;
+                var value = File.ReadAllText(PendingFile).Trim();
+                if (value == "null") return "null";
+                return IsStayOnValue(value) ? value : null;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// 写回"充电常亮"设置并读回校验。adb 丢设备时命令只是打印错误、不会抛异常，
+        /// 所以必须读回来确认，否则会出现"以为恢复了、其实还常亮"。
+        /// </summary>
+        private bool ApplyStayOn(string value)
+        {
+            try
+            {
+                var explicitValue = IsStayOnValue(value);
+                if (explicitValue)
+                    _adb.Shell("settings put global stay_on_while_plugged_in " + value, 10000);
+                else
+                    _adb.Shell("svc power stayon false", 10000);
+
+                var want = explicitValue ? value : "0";
+                var now = _adb.Shell("settings get global stay_on_while_plugged_in", 10000).Trim();
+                return now == want;
+            }
+            catch { return false; }
+        }
+
+        private void RestoreStayOn()
+        {
+            // 本次根本没走到"打开常亮"（比如手机没连上），没什么可恢复的。
+            if (!IsStayOnValue(_stayOnBefore) && !HasPendingStayOn()) return;
+
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                if (ApplyStayOn(_stayOnBefore))
+                {
+                    ClearPending();
+                    _log.Info("充电常亮设置已恢复为 " + (IsStayOnValue(_stayOnBefore) ? _stayOnBefore : "0"));
+                    return;
+                }
+                Thread.Sleep(500);
+            }
+            _log.Warn("恢复充电常亮设置没生效（手机可能刚好断开），下次启动会补一次");
+        }
+
+        /// <summary>
+        /// 上次执行没走完（关程序、崩溃、拔线）会留下 pending 文件，下次启动时补恢复。
+        /// 返回 true 表示已经没事可做（没有 pending 或已恢复成功）。
+        /// </summary>
+        public bool RecoverStayOn()
+        {
+            try
+            {
+                if (!File.Exists(PendingFile)) return true;
+                var value = File.ReadAllText(PendingFile).Trim();
+                if (!ApplyStayOn(value))
+                {
+                    _log.Warn("补恢复充电常亮设置失败，手机连上后会再试");
+                    return false;
+                }
+                ClearPending();
+                _log.Info("已补回上次没恢复的充电常亮设置：" + (IsStayOnValue(value) ? value : "0"));
+                return true;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 打卡结束一段时间后清理后台：先强停钉钉（打卡页常驻会占用几百 MB），
+        /// 再用 am kill-all 收掉其余后台应用。钉钉下次执行时会被重新打开，
+        /// 不影响极速打卡。
+        /// </summary>
+        public void CleanBackground()
+        {
+            try
+            {
+                _adb.Shell("am force-stop com.alibaba.android.rimet", 20000);
+                _adb.Shell("am kill-all", 20000);
+                _log.Info("已清理手机后台（钉钉及其余后台应用已关闭）");
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("清理后台失败：" + ex.Message);
+            }
         }
 
         private RunResult RunFull(bool dryRun)
@@ -308,6 +428,14 @@ namespace DingTalkClockIn
         {
             try { _stayOnBefore = _adb.Shell("settings get global stay_on_while_plugged_in", 10000).Trim(); }
             catch { _stayOnBefore = null; }
+            if (!IsStayOnValue(_stayOnBefore)) _stayOnBefore = null;
+
+            // 先落盘再改设置：万一程序中途被关掉/崩溃，下次启动能从这里补恢复。
+            // 上一次没恢复成功时手机还停在常亮，那个 7 不是"原值"，以 pending 里的最早值为准。
+            var pending = ReadPending();
+            if (pending != null) _stayOnBefore = pending;
+            else SavePending(_stayOnBefore);
+
             _adb.Shell("svc power stayon true", 15000);
             if (!IsLocked()) return true;
 
