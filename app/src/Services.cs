@@ -363,7 +363,15 @@ namespace DingTalkClockIn
         private bool _wasOnline;
         private int _lastUptime = -1;
         private DateTime _lastWarn = DateTime.MinValue;
+        private DateTime _lastOk = DateTime.MinValue;
         private int _samples;
+
+        /// <summary>
+        /// 两次成功采样之间超过这么多分钟，就认为中间是手机自己按计划关的机
+        /// （用户在系统设置里开了定时开关机：18:00 关、次日 07:30 开）。
+        /// 这种情况只记一行日志，不再转储内核日志。
+        /// </summary>
+        private const double RoutineOffMinutes = 10;
 
         public bool Online { get; private set; }
         public int Capacity { get; private set; }
@@ -411,19 +419,20 @@ namespace DingTalkClockIn
                 }
 
                 var uptime = _adb.UptimeSeconds();
+                var rebooted = _lastUptime >= 0 && uptime >= 0 && uptime + 30 < _lastUptime;
+                var gapMin = _lastOk == DateTime.MinValue ? 0 : (DateTime.Now - _lastOk).TotalMinutes;
 
-                if (_wasOnline && _lastUptime >= 0 && uptime >= 0 && uptime + 30 < _lastUptime)
+                if (_wasOnline && rebooted)
                 {
-                    Record("手机重启过（开机时长 " + _lastUptime + "s → " + uptime + "s）");
-                    DumpKernelLog("reboot");
+                    RecordReboot("手机重启过（开机时长 " + _lastUptime + "s → " + uptime + "s）", "reboot", gapMin);
                 }
-                else if (!_wasOnline && _lastUptime >= 0 && uptime >= 0 && uptime + 30 < _lastUptime)
+                else if (!_wasOnline && rebooted)
                 {
-                    Record("断开重连且开机时长变短，判定为重启（" + _lastUptime + "s → " + uptime + "s）");
-                    DumpKernelLog("reconnect");
+                    RecordReboot("断开重连且开机时长变短，判定为重启（" + _lastUptime + "s → " + uptime + "s）", "reconnect", gapMin);
                 }
 
                 _wasOnline = true;
+                _lastOk = DateTime.Now;
                 if (uptime >= 0) _lastUptime = uptime;
 
                 Capacity = _adb.BatteryLevel();
@@ -495,6 +504,28 @@ namespace DingTalkClockIn
             try { _log.Warn("电源监控：" + text); } catch { }
         }
 
+        /// <summary>
+        /// 记录一次重启。两次采样间隔很长，说明中间是手机自己按计划关机又开机
+        /// （系统设置里的定时开关机：18:00 关、07:30 开），这台机器的 /proc/last_kmsg
+        /// 又会被开机时的 KPOC 充电小内核覆盖成乱码，例行重启再存一份没有诊断价值，
+        /// 只留一行记录；只有运行中突然重启（间隔很短）才转储内核日志。
+        /// </summary>
+        private void RecordReboot(string text, string tag, double gapMin)
+        {
+            string reason = "";
+            try { reason = _adb.Shell("getprop ro.boot.bootreason", 8000).Trim(); } catch { }
+
+            if (gapMin >= RoutineOffMinutes)
+            {
+                Record(text + "（开机原因 " + reason + "，间隔 " + (int)gapMin + " 分钟，判定为定时关机，跳过内核日志转储）");
+                try { _log.Info("电源监控：" + text + "，例行关机，跳过内核日志转储"); } catch { }
+                return;
+            }
+
+            Record(text + "（开机原因 " + reason + "）");
+            DumpKernelLog(tag);
+        }
+
         private void DumpKernelLog(string tag)
         {
             try
@@ -504,9 +535,7 @@ namespace DingTalkClockIn
 
                 var name = "last_kmsg-" + tag + "-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt";
                 File.WriteAllText(Path.Combine(_paths.PowerDir, name), kmsg, new UTF8Encoding(false));
-
-                var reason = _adb.Shell("getprop ro.boot.bootreason", 8000).Trim();
-                Record("已保存上一轮内核日志：" + name + "（开机原因 " + reason + "）");
+                Record("已保存上一轮内核日志：" + name);
             }
             catch (Exception ex)
             {
